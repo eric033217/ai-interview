@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "./Logo";
+import SettingsButton from "./SettingsButton";
 
 const NAV = [
   { href: "/#features", label: "功能" },
@@ -21,15 +22,18 @@ export default function SiteHeader() {
           ))}
         </nav>
 
-        <Link
-          href="/interview"
-          className="group inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper transition hover:bg-accent hover:text-accent-ink"
-        >
-          開始練習
-          <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
-            →
-          </span>
-        </Link>
+        <div className="flex items-center gap-2.5">
+          <SettingsButton />
+          <Link
+            href="/interview"
+            className="group inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper transition hover:bg-accent hover:text-accent-ink"
+          >
+            開始練習
+            <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
+          </Link>
+        </div>
       </div>
     </header>
   );

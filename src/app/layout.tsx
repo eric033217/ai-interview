@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif, Noto_Serif_TC } from "next/font/google";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import ApiKeySettings from "@/components/ApiKeySettings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <SiteHeader />
         <div className="flex flex-1 flex-col">{children}</div>
         <SiteFooter />
+        <ApiKeySettings />
       </body>
     </html>
   );

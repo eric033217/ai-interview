@@ -33,7 +33,11 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: "01", title: "貼上職缺描述", body: "從求職網站複製 JD，並選擇這次想練幾題。" },
+  {
+    n: "01",
+    title: "設定 Key、貼上職缺",
+    body: "在設定中填入你的 OpenAI API Key，再貼上 JD 並選擇想練幾題。",
+  },
   { n: "02", title: "和面試官對答", body: "一題一題回答，面試官會依你的回答追問或換題。" },
   { n: "03", title: "拿到檢討報告", body: "分數、優點、改進建議，以及每一題的示範回答。" },
 ];
@@ -41,7 +45,11 @@ const STEPS = [
 const FAQS = [
   {
     q: "需要註冊或付費嗎？",
-    a: "不需要。打開練習頁面、貼上職缺描述就能直接開始。",
+    a: "不需要註冊。Rehearse 採用 BYOK（自備金鑰）模式：在右上角「設定」填入你自己的 OpenAI API Key 就能開始，AI 使用費用直接計入你的 OpenAI 帳號。",
+  },
+  {
+    q: "我的 API Key 安全嗎？",
+    a: "Key 只儲存在你這個瀏覽器的 localStorage。每次出題與評分時會隨請求送到我們的伺服器，由伺服器轉交給 OpenAI 後即丟棄，不會被儲存或記錄。在公用電腦上使用後，記得到設定中按「清除」。",
   },
   {
     q: "我的回答會被保存嗎？",
@@ -149,7 +157,7 @@ export default function LandingPage() {
                 看看怎麼運作
               </ArrowLink>
             </div>
-            <p className="mt-5 text-xs text-muted">免註冊 · 約 5 分鐘完成一場 · 繁體中文</p>
+            <p className="mt-5 text-xs text-muted">免註冊 · 使用你自己的 OpenAI Key · 約 5 分鐘完成一場</p>
           </div>
 
           <div className="animate-rise [animation-delay:0.15s]">
@@ -294,7 +302,7 @@ export default function LandingPage() {
             從這裡開始準備。
           </h2>
           <p className="relative mx-auto mt-4 max-w-md opacity-85">
-            不用註冊，貼上職缺描述，五分鐘後拿到你的檢討報告。
+            不用註冊，填入你的 OpenAI Key、貼上職缺描述，五分鐘後拿到你的檢討報告。
           </p>
           <Link
             href="/interview"

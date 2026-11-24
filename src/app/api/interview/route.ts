@@ -8,6 +8,11 @@
  *   已回答數 < 總題數  → 請 AI 出下一題（或針對上一題追問）
  *   已回答數 = 總題數  → 請 AI 評分，並給出每一題的點評與較佳回答方式
  *   已回答數 > 總題數  → 不合理的請求，回傳錯誤
+ *
+ * BYOK（Bring Your Own Key）：
+ * 伺服器不使用自己的 OpenAI Key，而是由使用者在前端「設定」輸入自己的 Key，
+ * 前端每次呼叫時放在 HTTP Header `x-openai-api-key` 帶過來。
+ * 伺服器只在這次請求中拿來呼叫 OpenAI，不儲存、不寫進 log。
  */
 
 // OpenAI 官方 SDK，用來呼叫 ChatGPT 模型
@@ -23,6 +28,8 @@ import {
   type InterviewResponse, // API 回傳的兩種格式：出題 或 評分
   type QuestionReview, // 單一題的檢討：題目、回答、點評、較佳回答
 } from "@/lib/interview";
+// API Key 放在哪個 Header、長什麼樣子（前後端共用）
+import { API_KEY_HEADER, isPlausibleApiKey } from "@/lib/apiKey";
 
 // 使用的模型：優先讀環境變數 OPENAI_MODEL，沒設定就用 gpt-4o-mini（便宜又快）
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
@@ -31,13 +38,17 @@ const MAX_JD_LENGTH = 5000;
 // 每則訊息最多 3000 字，超過的部分會被截掉
 const MAX_ANSWER_LENGTH = 3000;
 
-// 建立 OpenAI 客戶端，API Key 從 .env.local 的 OPENAI_API_KEY 讀取
-// （放在函式外面，只會建立一次，之後每個請求共用）
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 /** 小工具：回傳 400 Bad Request（代表「使用者送來的資料有問題」） */
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+/**
+ * 小工具：回傳和 API Key 有關的錯誤。
+ * 多帶一個 code: "api_key"，前端看到就知道要引導使用者去「設定」重新輸入 Key。
+ */
+function apiKeyError(message: string, status = 401) {
+  return NextResponse.json({ error: message, code: "api_key" }, { status });
 }
 
 /**
@@ -113,11 +124,18 @@ function pairQuestions(messages: ChatMessage[]) {
  *   { jobDescription: string, totalQuestions: number, messages: ChatMessage[] }
  */
 export async function POST(req: Request) {
-  // ── 步驟 1：確認伺服器有設定 API Key ──────────────────────────
-  // 沒有 Key 就不可能呼叫 OpenAI，直接回 500（伺服器設定錯誤，不是使用者的錯）
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: "伺服器未設定 OPENAI_API_KEY" }, { status: 500 });
+  // ── 步驟 1：取得使用者自己的 API Key（BYOK）──────────────────
+  // 從 Header 讀取，沒帶或格式明顯不對就直接擋下，不浪費一次 OpenAI 呼叫
+  const apiKey = req.headers.get(API_KEY_HEADER)?.trim();
+  if (!apiKey) {
+    return apiKeyError("請先在「設定」中輸入你的 OpenAI API Key");
   }
+  if (!isPlausibleApiKey(apiKey)) {
+    return apiKeyError("API Key 格式不正確，應以 sk- 開頭", 400);
+  }
+  // 每個請求用使用者自己的 Key 建立一個 OpenAI 客戶端
+  // （不能像以前一樣全站共用一個，因為每個人的 Key 不同）
+  const openai = new OpenAI({ apiKey, maxRetries: 1 });
 
   // ── 步驟 2：解析請求的 JSON ─────────────────────────────────
   // 如果前端送來的不是合法 JSON，req.json() 會丟錯誤，這裡接住並回 400
@@ -313,8 +331,27 @@ ${jobDescription.trim()}
     return NextResponse.json(res);
   } catch (err) {
     // 任何 OpenAI 呼叫失敗、AI 回空白、JSON 解析失敗都會到這裡
-    // 詳細錯誤只印在伺服器的終端機（方便除錯），不把內部細節傳給使用者
-    console.error("[/api/interview]", err);
+
+    // OpenAI 回傳的錯誤：依狀態碼翻譯成使用者看得懂、可以自己處理的訊息
+    if (err instanceof OpenAI.APIError) {
+      // 只印狀態碼與錯誤代碼。不印 err.message：OpenAI 的 401 訊息會夾帶部分 Key（sk-xxxx***）
+      console.error("[/api/interview] OpenAI error", err.status, err.code ?? err.type);
+      if (err.status === 401) {
+        return apiKeyError("API Key 無效或已被停用，請到「設定」重新輸入");
+      }
+      if (err.status === 429) {
+        return NextResponse.json(
+          { error: "你的 OpenAI 帳號額度不足或請求太頻繁，請確認帳單設定或稍後再試" },
+          { status: 429 },
+        );
+      }
+      if (err.status === 403 || err.status === 404) {
+        return apiKeyError(`這把 API Key 無法使用模型 ${MODEL}，請確認帳號權限`, 403);
+      }
+    } else {
+      // 其他錯誤（網路問題、JSON 解析失敗等）印在伺服器終端機方便除錯
+      console.error("[/api/interview]", err);
+    }
     // 502 Bad Gateway：代表「我們依賴的外部服務（OpenAI）出問題」
     return NextResponse.json({ error: "AI 服務暫時無法回應，請稍後再試" }, { status: 502 });
   }

@@ -9,6 +9,8 @@ import {
   type Evaluation,
   type InterviewResponse,
 } from "@/lib/interview";
+import { API_KEY_HEADER, openSettings } from "@/lib/apiKey";
+import { useApiKey, useHydrated } from "@/lib/useApiKey";
 
 type Stage = "setup" | "interview" | "result";
 
@@ -38,6 +40,10 @@ export default function InterviewApp() {
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 錯誤是否和 API Key 有關（是的話顯示「前往設定」按鈕）
+  const [keyError, setKeyError] = useState(false);
+  const apiKey = useApiKey();
+  const hydrated = useHydrated();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,14 +53,22 @@ export default function InterviewApp() {
   async function callInterview(history: ChatMessage[]) {
     setLoading(true);
     setError(null);
+    setKeyError(false);
     try {
       const res = await fetch("/api/interview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // BYOK：把使用者自己的 OpenAI Key 帶給 API
+          [API_KEY_HEADER]: apiKey,
+        },
         body: JSON.stringify({ jobDescription, totalQuestions, messages: history }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "發生錯誤");
+      if (!res.ok) {
+        if (data.code === "api_key") setKeyError(true);
+        throw new Error(data.error ?? "發生錯誤");
+      }
 
       const result = data as InterviewResponse;
       if (result.type === "question") {
@@ -77,6 +91,10 @@ export default function InterviewApp() {
 
   async function startInterview() {
     if (!jobDescription.trim()) return;
+    if (!apiKey) {
+      openSettings();
+      return;
+    }
     setMessages([]);
     setEvaluation(null);
     setStage("interview");
@@ -105,6 +123,7 @@ export default function InterviewApp() {
     setQuestionNumber(0);
     setEvaluation(null);
     setError(null);
+    setKeyError(false);
   }
 
   const answeredCount = messages.filter((m) => m.role === "candidate").length;
@@ -139,9 +158,35 @@ export default function InterviewApp() {
         {error && (
           <div
             role="alert"
-            className="mt-6 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm text-accent"
+            className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm text-accent"
           >
-            {error}
+            <span>{error}</span>
+            {keyError && (
+              <button
+                onClick={openSettings}
+                className="rounded-full bg-accent px-4 py-1.5 text-xs font-semibold text-accent-ink transition hover:brightness-110"
+              >
+                前往設定
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 尚未設定 API Key 的提示（只在設定階段顯示） */}
+        {stage === "setup" && hydrated && !apiKey && (
+          <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-accent" />
+              <div>
+                <div className="font-semibold">先設定你的 OpenAI API Key</div>
+                <p className="mt-0.5 text-sm text-muted">
+                  Rehearse 使用你自己的 Key 呼叫 AI，Key 只會存在這個瀏覽器。
+                </p>
+              </div>
+            </div>
+            <button onClick={openSettings} className={`${btnPrimary} shrink-0 py-2.5`}>
+              設定 API Key
+            </button>
           </div>
         )}
 
@@ -198,7 +243,8 @@ export default function InterviewApp() {
               <div className="mt-7 flex justify-end border-t border-line pt-5">
                 <button
                   onClick={startInterview}
-                  disabled={!jobDescription.trim() || loading}
+                  disabled={!jobDescription.trim() || !apiKey || loading}
+                  title={!apiKey ? "請先設定 API Key" : undefined}
                   className={btnPrimary}
                 >
                   {loading ? "準備中…" : "開始面試"}
